@@ -17,7 +17,9 @@ public class ThirdPersonController : MonoBehaviour
     [FoldoutGroup("References")]
     public CinemachineCamera characterAimCamera;
     [FoldoutGroup("References")]
-    public LineRenderer RayPrefab;
+    public GameObject Granade;
+
+    public LayerMask enemyMask;
 
 
     [FoldoutGroup("Controller")]
@@ -67,6 +69,7 @@ public class ThirdPersonController : MonoBehaviour
     [SerializeField] private float pitch;
 
 
+    [SerializeField] LayerMask mask;
     Vector3 normalDebug;
     Vector3 impactPoint;
     Vector3 crossResult;
@@ -126,7 +129,10 @@ public class ThirdPersonController : MonoBehaviour
         // inputs.Player.Sprint.performed += OnDash;
     }
 
- 
+    private void ThrowSMT(InputAction.CallbackContext context)
+    {
+        GameObject Granade = Instantiate(GranadePrefab);
+    }
 
     void Start()
     {
@@ -321,21 +327,16 @@ public class ThirdPersonController : MonoBehaviour
         OnAttackEvent?.Invoke();
         source.GenerateImpulse();
         Debug.Log("Attack");
-        Physics.Raycast(WeaponShootAnchor.position,characterAimCamera.transform.forward,out RaycastHit hit,100);
-
+        Physics.Raycast(WeaponShootAnchor.position,characterAimCamera.transform.forward,out RaycastHit hit,100, mask);
         if(hit.collider != null)
         {
-            //  Physics.Raycast(transform.position, transform.right, out RaycastHit hitRight, rayLenght);
+            Physics.Raycast(transform.position, transform.right, out RaycastHit hitRight, rayLenght);
             LineRenderer ray = Instantiate(RayPrefab, transform.position, Quaternion.identity);
             ray.gameObject.transform.position = WeaponShootAnchor.position;
 
             ray.positionCount = 2;
             ray.SetPosition(0, WeaponShootAnchor.position);
             ray.SetPosition(1, hit.point);
-
-
-            
-         
         }
     }
     public float GetSpeed()
