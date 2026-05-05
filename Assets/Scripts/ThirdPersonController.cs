@@ -17,7 +17,9 @@ public class ThirdPersonController : MonoBehaviour
     [FoldoutGroup("References")]
     public CinemachineCamera characterAimCamera;
     [FoldoutGroup("References")]
-    public GameObject Granade;
+    public GameObject GranadePrefab;
+    public GameObject TurrentPrefab;
+    public LineRenderer RayPrefab;
 
     public LayerMask enemyMask;
 
@@ -69,7 +71,7 @@ public class ThirdPersonController : MonoBehaviour
     [SerializeField] private float pitch;
 
 
-    [SerializeField] LayerMask mask;
+    [SerializeField] LayerMask enemymask;
     Vector3 normalDebug;
     Vector3 impactPoint;
     Vector3 crossResult;
@@ -86,7 +88,7 @@ public class ThirdPersonController : MonoBehaviour
        
 
 
-         inputs = new();
+        inputs = new();
         controller = GetComponent<CharacterController>();
 
         Cursor.visible = false;
@@ -101,6 +103,7 @@ public class ThirdPersonController : MonoBehaviour
 
         inputs.Player.Move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
         inputs.Player.Move.canceled += ctx => moveInput = Vector2.zero;
+        inputs.Player.ThrowGranade.performed += ThrowSMT;
 
 
         inputs.Player.Jump.performed += OnJump;
@@ -131,7 +134,9 @@ public class ThirdPersonController : MonoBehaviour
 
     private void ThrowSMT(InputAction.CallbackContext context)
     {
-        GameObject Granade = Instantiate(GranadePrefab);
+        GameObject Granade = Instantiate(GranadePrefab,transform.position, Quaternion.identity);
+        Vector3 dir = characterCamera.transform.forward;
+        Granade.GetComponent<Rigidbody>().AddForce(dir * 10, ForceMode.Impulse);
     }
 
     void Start()
@@ -326,12 +331,12 @@ public class ThirdPersonController : MonoBehaviour
     {
         OnAttackEvent?.Invoke();
         source.GenerateImpulse();
-        Debug.Log("Attack");
-        Physics.Raycast(WeaponShootAnchor.position,characterAimCamera.transform.forward,out RaycastHit hit,100, mask);
+        Physics.SphereCast(WeaponShootAnchor.position,5f,characterAimCamera.transform.forward,out RaycastHit hit,100, enemymask);
         if(hit.collider != null)
         {
-            Physics.Raycast(transform.position, transform.right, out RaycastHit hitRight, rayLenght);
-            LineRenderer ray = Instantiate(RayPrefab, transform.position, Quaternion.identity);
+            GameObject turrent = Instantiate(TurrentPrefab, hit.point, Quaternion.identity);
+            LineRenderer ray = Instantiate(RayPrefab,transform.position, Quaternion.identity);
+            turrent.transform.up = hit.normal;
             ray.gameObject.transform.position = WeaponShootAnchor.position;
 
             ray.positionCount = 2;

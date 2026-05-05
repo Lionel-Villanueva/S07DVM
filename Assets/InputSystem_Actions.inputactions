@@ -97,7 +97,7 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "Granade",
+                    "name": "ThrowGranade",
                     "type": "Button",
                     "id": "79c72a5a-009e-40da-bfe4-8fbf067e74a2",
                     "expectedControlType": "",
@@ -510,7 +510,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Granade",
+                    "action": "ThrowGranade",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }
