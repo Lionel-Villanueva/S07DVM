@@ -103,7 +103,7 @@ public class ThirdPersonController : MonoBehaviour
 
         inputs.Player.Move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
         inputs.Player.Move.canceled += ctx => moveInput = Vector2.zero;
-        inputs.Player.ThrowGranade.performed += ThrowSMT;
+        //inputs.Player.ThrowGranade.performed += ThrowSMT;
 
 
         inputs.Player.Jump.performed += OnJump;
@@ -132,12 +132,13 @@ public class ThirdPersonController : MonoBehaviour
         // inputs.Player.Sprint.performed += OnDash;
     }
 
-    private void ThrowSMT(InputAction.CallbackContext context)
+    /*private void ThrowSMT(InputAction.CallbackContext context)
     {
         GameObject Granade = Instantiate(GranadePrefab,transform.position, Quaternion.identity);
         Vector3 dir = characterCamera.transform.forward;
         Granade.GetComponent<Rigidbody>().AddForce(dir * 10, ForceMode.Impulse);
     }
+    */
 
     void Start()
     {
