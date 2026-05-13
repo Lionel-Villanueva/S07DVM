@@ -1,7 +1,6 @@
 using Sirenix.OdinInspector;
-using System;
+using System.Collections;
 using Unity.Cinemachine;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.InputSystem;
@@ -9,354 +8,181 @@ using UnityEngine.InputSystem;
 public class ThirdPersonController : MonoBehaviour
 {
     [FoldoutGroup("References")]
-    public InputSystem_Actions inputs;
+    public InputSystem_Actions playerInputsMap;
     [FoldoutGroup("References")]
-    private CharacterController controller;
+    private CharacterController charMovement;
     [FoldoutGroup("References")]
-    public CinemachineCamera characterCamera;
+    public CinemachineCamera camNormal;
     [FoldoutGroup("References")]
-    public CinemachineCamera characterAimCamera;
+    public CinemachineCamera camAiming;
     [FoldoutGroup("References")]
-    public LineRenderer RayPrefab;
+    public LineRenderer visualLaserShot;
+    [FoldoutGroup("References")]
+    public Transform gunMuzzlePoint;
 
+    [FoldoutGroup("VFX System")]
+    public ParticleSystem vfxMuzzleFlash;
+    [FoldoutGroup("VFX System")]
+    public ParticleSystem vfxFootsteps;
+    [FoldoutGroup("VFX System")]
+    public GameObject vfxImpactPrefab;
 
-    [FoldoutGroup("Controller")]
-    public float moveSpeed = 5f;
-    [FoldoutGroup("Controller")]
-    public float rotationSpeed = 200f;
-    [FoldoutGroup("Controller")]
-    public float verticalVelocity = 0;
-    [FoldoutGroup("Controller")]
-    public float jumpForce = 10;
-    [FoldoutGroup("Controller")]
-    public float pushForce = 4;
+    [FoldoutGroup("Turret System")]
+    public GameObject deployableTurretPrefab;
+    [FoldoutGroup("Turret System")]
+    public Transform turretDropPosition;
 
-    [FoldoutGroup("Controller/Dash")]
-    private bool IsDashing;
-    [FoldoutGroup("Controller/Dash")]
-    public float dashForce;
-    [FoldoutGroup("Controller/Dash")]
-    public float dashDuration = 0.2f;
-    [FoldoutGroup("Controller/Dash")]
-    private float dashTimer;
-    [FoldoutGroup("Controller/Animator"), SerializeField]
-    private CinemachineImpulseSource source;
+    [FoldoutGroup("Controller Stats")]
+    public float speedMove = 5f;
+    [FoldoutGroup("Controller Stats")]
+    public float speedRotate = 200f;
+    [FoldoutGroup("Controller Stats")]
+    public float velVertical = 0;
+    [FoldoutGroup("Controller Stats")]
+    public float powerJump = 10;
+    [FoldoutGroup("Controller Stats")]
+    public float powerPush = 4;
 
-    [SerializeField] private Vector2 moveInput;
+    [FoldoutGroup("Dash Settings")]
+    private bool stateDashing;
+    [FoldoutGroup("Dash Settings")]
+    public float forceDash;
+    [FoldoutGroup("Dash Settings")]
+    public float timeDash = 0.2f;
+    [FoldoutGroup("Dash Settings")]
+    private float timerDash;
 
+    [FoldoutGroup("Animator Settings")]
+    [SerializeField] private CinemachineImpulseSource impulseCamSource;
+    [FoldoutGroup("Animator Settings")]
+    public UnityEvent OnShootAction;
 
-
-    [FoldoutGroup("WallRun")]
-    public float rayLenght;
-    [FoldoutGroup("WallRun")]
-    public float cameraTitlt = 15;
-    [FoldoutGroup("WallRun")]
-    public float maxTimeInAir;
-    [FoldoutGroup("WallRun")]
-    public bool enableWallRun;
-
-    public bool aimMode = false;
-
-    [FoldoutGroup("Attack")]
-    public Transform WeaponShootAnchor;
-    [FoldoutGroup("Attack")]
-    public Vector2 MouseMovement;
-    [FoldoutGroup("Attack")]
-    [SerializeField] private float sensitivity = 2f;
-    [SerializeField] private float yaw;
-    [SerializeField] private float pitch;
-
-
-    Vector3 normalDebug;
-    Vector3 impactPoint;
-    Vector3 crossResult;
-
-
-    public UnityEvent OnSpawn;
-    public UnityEvent OnAttackEvent;
-    public UnityEvent OnDead;
-    public UnityEvent OnHit;
-    public UnityEvent OnUpgrade;
+    private Vector2 axisInputMove;
 
     private void Awake()
     {
-       
-
-
-         inputs = new();
-        controller = GetComponent<CharacterController>();
-
-        Cursor.visible = false;
-        Cursor.lockState = CursorLockMode.Locked;
-
-        characterCamera.Priority = 10;
-        characterAimCamera.Priority = 0;
+        playerInputsMap = new InputSystem_Actions();
+        charMovement = GetComponent<CharacterController>();
     }
+
     private void OnEnable()
     {
-        inputs.Enable();
+        playerInputsMap.Enable();
 
-        inputs.Player.Move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
-        inputs.Player.Move.canceled += ctx => moveInput = Vector2.zero;
+        playerInputsMap.Player.Move.performed += ctx => axisInputMove = ctx.ReadValue<Vector2>();
+        playerInputsMap.Player.Move.canceled += ctx => axisInputMove = Vector2.zero;
+        playerInputsMap.Player.Jump.performed += ExecJump;
+        playerInputsMap.Player.Sprint.performed += ExecDash;
 
+        playerInputsMap.Player.Attack.performed += ExecFireWeapon;
 
-        inputs.Player.Jump.performed += OnJump;
-        inputs.Player.Aim.started += ctx =>
+        playerInputsMap.Player.Interact.performed += ExecDeployTurret;
+    }
+
+    private void OnDisable()
+    {
+        playerInputsMap.Disable();
+    }
+
+    private void Update()
+    {
+        HandlePlayerMovement();
+    }
+
+    private void HandlePlayerMovement()
+    {
+        Vector3 directionMove = transform.forward * axisInputMove.y + transform.right * axisInputMove.x;
+        directionMove *= speedMove;
+
+        if (charMovement.isGrounded && velVertical < 0)
+        {
+            velVertical = -2f;
+        }
+
+        velVertical += Physics.gravity.y * Time.deltaTime;
+        directionMove.y = velVertical;
+
+        if (stateDashing)
+        {
+            directionMove = transform.forward * forceDash * (timerDash / timeDash);
+            timerDash -= Time.deltaTime;
+
+            if (timerDash <= 0)
             {
-                characterCamera.Priority = 0;
-                characterAimCamera.Priority = 10;
-                aimMode = true;
-            };
-        inputs.Player.Aim.canceled += ctx =>
-        {
-            characterCamera.Priority = 10;
-            characterAimCamera.Priority = 0;
-            aimMode = false;
-
-
-            Vector3 cameraForwardDir = characterCamera.transform.forward;
-            cameraForwardDir.y = 0;
-            cameraForwardDir.Normalize();
-            Quaternion targetQuaternion = Quaternion.LookRotation(cameraForwardDir);
-            transform.rotation = targetQuaternion;
-        };
-        inputs.Player.Attack.performed += OnAttack;
-        inputs.Player.Look.performed += ctx => MouseMovement = ctx.ReadValue<Vector2>();
-        inputs.Player.Look.canceled += ctx => MouseMovement = Vector2.zero;
-        // inputs.Player.Sprint.performed += OnDash;
-    }
-
- 
-
-    void Start()
-    {
-
-    }
-    void Update()
-    {
-        EnableWallRun();
-        OnMove();
-        //OnSimpleMove();
-    }
-    #region Movement
-    public void OnMove()
-    {
-
-
-        Vector3 cameraForwardDir = Vector3.zero;
-
-
-        if(!aimMode)
-        {
-            if (moveInput != Vector2.zero)
-            {
-                cameraForwardDir = characterCamera.transform.forward;
-                cameraForwardDir.y = 0;
-                cameraForwardDir.Normalize();
-
-                Quaternion targetQuaternion = Quaternion.LookRotation(cameraForwardDir);
-                //transform.rotation = targetQuaternion;
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation,
-                    targetQuaternion,
-                    rotationSpeed * Time.deltaTime);
-
-
-            }
-
-
-            Vector3 angles = transform.rotation.eulerAngles;
-            yaw = angles.y;
-            pitch = angles.x;
-
-            if (pitch > 180f)
-                pitch -= 360f;
-        }
-        else
-        {
-
-            cameraForwardDir = characterAimCamera.transform.forward;
-            cameraForwardDir.y = 0;
-            cameraForwardDir.Normalize();
-
-            yaw += MouseMovement.x * sensitivity;
-            pitch -= MouseMovement.y * sensitivity;
-            pitch = Mathf.Clamp(pitch, -60f, 60f);
-            Quaternion targetRotation = Quaternion.Euler(pitch, yaw, 0f);
-            /*
-            Vector3 Target = characterAimCamera.transform.forward + (Vector3)MouseMovement;
-
-
-            Vector3 cameraForwardAimDir = characterCamera.transform.forward;
-            //cameraForwardAimDir.y = 0;
-            cameraForwardAimDir.Normalize();
-
-            Quaternion targetQuaternion = Quaternion.LookRotation(cameraForwardAimDir);*/
-
-            transform.rotation = Quaternion.Slerp(
-                transform.rotation,
-                targetRotation,
-                rotationSpeed * Time.deltaTime);
-        }
-       
-        //>?
-        Vector3 moveDir;
-        if (!enableWallRun)
-        {
-            moveDir = (cameraForwardDir * moveInput.y + transform.right * moveInput.x) * moveSpeed;
-        }
-        else
-        {
-            moveDir = (crossResult * moveInput.y) * moveSpeed;
-
-
-            
-        }
-
-        float magnitud = Mathf.Abs(controller.velocity.magnitude);
-        // print(magnitud);
-        //animator.SetFloat("Speed", GetSpeed());
-
-
-        verticalVelocity += Physics.gravity.y * Time.deltaTime;
-
-        if (enableWallRun)
-            verticalVelocity = 0;
-
-        if (controller.isGrounded && verticalVelocity < 0)
-            verticalVelocity = -2f;
-
-
-        moveDir.y = verticalVelocity;
-
-       // animator.SetBool("Grounded", controller.isGrounded);
-
-
-        if (IsDashing)
-        {
-            //->convertir el dash a un barrido por el piso! dash con gravedad integrada omaegoto!
-            moveDir = transform.forward * dashForce * (dashTimer / dashDuration);
-
-            dashTimer -= Time.deltaTime;
-
-            if (dashTimer <= 0)
-                IsDashing = false;
-        }
-        controller.Move(moveDir * Time.deltaTime);
-    }
-
-    private void OnJump(InputAction.CallbackContext context)
-    {
-        if (!controller.isGrounded) return;
-
-       // animator.SetTrigger("Jump");
-      
-        verticalVelocity = jumpForce;
-    }
-    public void OnSimpleMove()
-    {
-        transform.Rotate(Vector3.up * moveInput.x * rotationSpeed * Time.deltaTime);
-        Vector3 moveDir = transform.forward * moveSpeed * moveInput.y;
-        controller.SimpleMove(moveDir);
-    }
-    private void OnControllerColliderHit(ControllerColliderHit hit)
-    {
-        Vector3 pushDir = (hit.transform.position - transform.position).normalized;
-
-        if (hit.rigidbody != null && hit.rigidbody.linearVelocity == Vector3.zero)
-        {
-            print(hit.gameObject.name);
-            hit.rigidbody.AddForce(pushDir * pushForce, ForceMode.Impulse);
-        }
-    }
-    private void OnDash(InputAction.CallbackContext context)
-    {
-        IsDashing = true;
-        dashTimer = dashDuration;
-    }
-
-    public void EnableWallRun()
-    {
-        //->mejor castearlo desde una referenia en los piez
-        RaycastHit hit = default;
-
-        Physics.Raycast(transform.position, transform.right, out RaycastHit hitRight, rayLenght);
-
-        Physics.Raycast(transform.position, -transform.right, out RaycastHit hitLeft, rayLenght);
-
-   
-        if (hitRight.collider != null && hitRight.collider.gameObject.tag == "Wall")
-        {
-            hit = hitRight;
-            characterCamera.Lens.Dutch = cameraTitlt;
-        }
-        else if(hitLeft.collider != null && hitLeft.collider.gameObject.tag == "Wall")
-        {
-            hit = hitLeft;
-            characterCamera.Lens.Dutch = -cameraTitlt;
-        }
-        else
-        {
-            characterCamera.Lens.Dutch = 0;
-            enableWallRun = false;
-        }
-
-        if(hit.collider != null)
-        {
-            enableWallRun = true;
-
-            normalDebug = hit.normal;
-            impactPoint = hit.point;
-            crossResult = Vector3.Cross(normalDebug, transform.up);//+1
-
-            if (Vector3.Dot(crossResult, transform.forward) < 0)
-            {
-                crossResult *= -1;
+                stateDashing = false;
             }
         }
-    }
-    #endregion
-    private void OnAttack(InputAction.CallbackContext context)
-    {
-        OnAttackEvent?.Invoke();
-        source.GenerateImpulse();
-        Debug.Log("Attack");
-        Physics.Raycast(WeaponShootAnchor.position,characterAimCamera.transform.forward,out RaycastHit hit,100);
 
-        if(hit.collider != null)
+        charMovement.Move(directionMove * Time.deltaTime);
+
+        if (charMovement.isGrounded && axisInputMove.magnitude > 0.1f && !stateDashing)
         {
-            //  Physics.Raycast(transform.position, transform.right, out RaycastHit hitRight, rayLenght);
-            LineRenderer ray = Instantiate(RayPrefab, transform.position, Quaternion.identity);
-            ray.gameObject.transform.position = WeaponShootAnchor.position;
-
-            ray.positionCount = 2;
-            ray.SetPosition(0, WeaponShootAnchor.position);
-            ray.SetPosition(1, hit.point);
-
-
-            
-         
+            if (vfxFootsteps != null && !vfxFootsteps.isPlaying)
+                vfxFootsteps.Play();
+        }
+        else
+        {
+            if (vfxFootsteps != null && vfxFootsteps.isPlaying)
+                vfxFootsteps.Stop();
         }
     }
-    public float GetSpeed()
+
+    private void ExecJump(InputAction.CallbackContext context)
     {
-        return Mathf.Abs(controller.velocity.magnitude);
+        if (!charMovement.isGrounded) return;
+        velVertical = powerJump;
     }
- 
-    private void OnDrawGizmos()
+
+    private void ExecDash(InputAction.CallbackContext context)
     {
-        Gizmos.color = Color.purple;
-        Gizmos.DrawRay(transform.position, transform.right * rayLenght);
-        Gizmos.color = Color.navyBlue;
-        Gizmos.DrawRay(transform.position, -transform.right * rayLenght);
+        stateDashing = true;
+        timerDash = timeDash;
+    }
 
-        Gizmos.color = Color.magenta;
-        Gizmos.DrawRay(impactPoint, normalDebug * rayLenght);
-        Gizmos.DrawSphere(impactPoint, 0.1f);
+    private void ExecFireWeapon(InputAction.CallbackContext context)
+    {
+        OnShootAction?.Invoke();
+        if (impulseCamSource != null) impulseCamSource.GenerateImpulse();
 
-        Gizmos.color = Color.orange;
-        Gizmos.DrawRay(impactPoint, crossResult * rayLenght);
+        if (vfxMuzzleFlash != null)
+            vfxMuzzleFlash.Play();
 
+        if (Physics.Raycast(camAiming.transform.position, camAiming.transform.forward, out RaycastHit hitData, 100f))
+        {
+            StartCoroutine(DisplayShotTrajectory(gunMuzzlePoint.position, hitData.point));
 
+            if (vfxImpactPrefab != null)
+            {
+                GameObject instImpact = Instantiate(vfxImpactPrefab, hitData.point, Quaternion.LookRotation(hitData.normal));
+                Destroy(instImpact, 2f);
+            }
+        }
+        else
+        {
+            Vector3 maxDistPoint = camAiming.transform.position + camAiming.transform.forward * 100f;
+            StartCoroutine(DisplayShotTrajectory(gunMuzzlePoint.position, maxDistPoint));
+        }
+    }
+
+    private IEnumerator DisplayShotTrajectory(Vector3 originPoint, Vector3 destPoint)
+    {
+        if (visualLaserShot != null)
+        {
+            visualLaserShot.enabled = true;
+            visualLaserShot.SetPosition(0, originPoint);
+            visualLaserShot.SetPosition(1, destPoint);
+
+            yield return new WaitForSeconds(0.05f);
+
+            visualLaserShot.enabled = false;
+        }
+    }
+
+    private void ExecDeployTurret(InputAction.CallbackContext context)
+    {
+        if (deployableTurretPrefab != null && turretDropPosition != null)
+        {
+            Instantiate(deployableTurretPrefab, turretDropPosition.position, turretDropPosition.rotation);
+        }
     }
 }
